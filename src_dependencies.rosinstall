@@ -1,0 +1,4 @@
+- git:
+    local-name: sensopart_interfaces
+    uri: http://robotgit.localdom.net/ai-box/components/sensopart/sensorpart_interfaces.git
+    version: master
