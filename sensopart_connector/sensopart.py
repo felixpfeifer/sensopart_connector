@@ -198,7 +198,97 @@ class SensoPart:
             if print_received:
                 self.log.debug(f"Received: [{response}]")
         return data
+    
+    # Changes from Original
 
+    def trigger_robotic(self,robot_position: [],trigger_identiy:str) -> (bool, str):
+        """Trigger the camera and send the robot position"""
+        x = str(round(robot_position[0] * 1000)).zfill(8)[:8]
+        y = str(round(robot_position[1] * 1000)).zfill(8)[:8]
+        z = str(round(robot_position[2] * 1000)).zfill(8)[:8]
+        rx = str(round(robot_position[3] * 1000)).zfill(8)[:8]
+        ry = str(round(robot_position[4] * 1000)).zfill(8)[:8]
+        rz = str(round(robot_position[5] * 1000)).zfill(8)[:8]
+        trigger_identity_length = str(len(trigger_identiy)).zfill(2)
+
+        position = x + y + z + rx + ry + rz
+        success, msg = self.send_message(f'TRR1{trigger_identity_length}{trigger_identiy}{position}')
+        if not success:
+            return success, msg
+        response = self.receive_message(4).decode()
+        self.log.info(f"[trigger] Response: {response}")
+        return True, response[3]
+
+    def calibration_init(self) -> int:
+        """Initialization of the calibration"""
+        cmd = "CCD"
+        self.send_message(cmd)
+        response = self.receive_message(4).decode()
+        self.log.info(f"Response: {response}")
+
+        if response == "CCDP":
+            self.log.info("Success: Calibration initialization")
+            return True
+        else:
+            self.log.error("Fail: Calibration initialization")
+            return False
+
+    def add_calibration_image(self,robot_position,measurement_plane:bool=False) -> bool:
+        """
+        Add a new image to the current calibration. Please execute 'calibration_init' before
+
+        Params:
+            - robot_position: is a list with xyz and roll,pitch and yaw
+            - 'measurement_plane': need to be True for the first image and then False
+        """
+        request_version = "1"
+        mode = "2"  # Hand-Eye calibration
+        order_rotation = "02"  # Roll-Pitch-Yaw
+    
+        # Convert the measurement_plane bool to a string 0 or 1
+        measurement_plane = "1" if measurement_plane else "0"
+
+        x = str(round(robot_position[0] * 1000)).zfill(8)[:8]
+        y = str(round(robot_position[1] * 1000)).zfill(8)[:8]
+        z = str(round(robot_position[2] * 1000)).zfill(8)[:8]
+        rx = str(round(robot_position[3] * 1000)).zfill(8)[:8]
+        ry = str(round(robot_position[4] * 1000)).zfill(8)[:8]
+        rz = str(round(robot_position[5] * 1000)).zfill(8)[:8]
+
+        position = x + y + z + rx + ry + rz
+
+        cmd = "CAI" + request_version + mode + "00" + measurement_plane + order_rotation + position
+        # Check if the length of the command is 59 Bytes
+        if len(cmd) != 59:
+            self.log.error("Fail check Length: Add calibration image ( " + cmd + " )")
+            return False
+        self.send_message(cmd)
+
+        response = self.receive_message(7).decode()
+        if response[:4] == "CAIP":
+            self.log.info("Success: Add calibration image")
+
+            return True
+        else:
+            self.log.error("Fail: Add calibration image ( " + response + " )")
+            # Bit 5-7: Error Codes
+            self.log.error("Error code: " + response[4:7])
+            return False
+
+    def run_calibration(self) -> bool:
+        """ Execute the calibration of the camera. You need to add at least 6 images (recommended: 10) to the calibration before running this function """
+        duration = "1"  # Permanent
+        mode = "0"  # 0 - Calibration (internal and external parameters) 6 - Calibrate Hand-Eye/Base-Eye
+        cmd = "CRP1" + duration + "4" + mode
+        self.send_message(cmd)
+
+        response = self.receive_message(4).decode()
+        if response[:4] == "CRPP":
+            self.log.info("Success: Calibration Robotics multi-image")
+            return True
+        else:
+            self.log.error("Fail: Calibration Robotics multi-image ( " + response + " )")
+            return False
 
 if __name__ == '__main__':
     # Setup logging

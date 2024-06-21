@@ -30,7 +30,7 @@ def generate_launch_description():
     )
     sensopart_connector_node = Node(
         package='sensopart_connector',
-        node_executable='sensopart_node',
+        executable='sensopart_node',
         output='screen',
         emulate_tty=True,
         parameters=[{

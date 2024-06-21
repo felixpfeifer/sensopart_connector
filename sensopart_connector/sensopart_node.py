@@ -6,7 +6,7 @@ from rcl_interfaces.msg import SetParametersResult
 from sensopart_connector.sensopart import SensoPart
 from std_srvs.srv import Trigger
 from sensopart_interfaces.msg import Job
-from sensopart_interfaces.srv import ExtendedTrigger, GetImage, GetJobs, SetJob
+from sensopart_interfaces.srv import ExtendedTrigger, GetImage, GetJobs, SetJob, Calibration, TriggerRobotics
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 
@@ -28,7 +28,7 @@ class SensopartNode(Node):
         self.ip = self.declare_parameter(self.PARAM_IP, '172.31.1.198')
         self.auto_connect = self.declare_parameter(self.PARAM_AUTO_CONNECT, True)
         self.publish_image_on_trigger = self.declare_parameter('publish_image_on_trigger', True)
-        self.set_parameters_callback(self.parameter_changed)
+        self.add_on_set_parameters_callback(self.parameter_changed)
 
         self.get_logger().info(
             f"Current parameters:\n"
@@ -54,6 +54,10 @@ class SensopartNode(Node):
         self.extended_trigger_service = self.create_service(
             ExtendedTrigger, f'{self.get_name()}/extended_trigger', self.extended_trigger_callback)
 
+        # Trigger with position service
+        self.trigger_with_position_service = self.create_service(
+            TriggerRobotics, f'{self.get_name()}/trigger_with_position', self.trigger_with_position_callback)
+        
         # Image service
         self.get_image_service = self.create_service(
             GetImage, f'{self.get_name()}/get_image', self.get_image_callback)
@@ -65,6 +69,11 @@ class SensopartNode(Node):
             SetJob, f'{self.get_name()}/change_job', self.change_job_callback)
         self.change_job_permanent_service = self.create_service(
             SetJob, f'{self.get_name()}/change_job_permanent', self.change_job_permanent_callback)
+        
+        # Calibration services
+        self.calibrate_service = self.create_service(
+            Calibration, f'{self.get_name()}/calibrate', self.calibrate_callback)
+        
 
         # Auto-connect
         if self.auto_connect.value:
@@ -103,6 +112,29 @@ class SensopartNode(Node):
                 return SetParametersResult(successful=success, reason=msg)
 
         return SetParametersResult(successful=True)
+    
+    def calibrate_callback(self, request: Calibration.Request, response: Calibration.Response):
+        # Init calibration
+        if request.init:
+            success = self.sensopart.calibration_init()
+            self.get_logger().info(f"Calibration init: {success}")
+            response.success = success
+            return response
+        # Compute calibration
+        elif request.compute:
+            success = self.sensopart.run_calibration()
+            response.success = success
+
+            return response
+        # Add the Pose to the calibration
+        else:            
+            success = self.sensopart.add_calibration_image(request.pose,request.first)
+            if success > 0:
+                response.success = True
+                response.image_number = success
+            else:
+                response.success = False
+            return response
 
     def connect_callback(self, _: Trigger.Request, response: Trigger.Response):
         return self.trigger_helper(self.sensopart.connect, response)
@@ -131,6 +163,12 @@ class SensopartNode(Node):
         response.mode = mode
         self.publish_image()
         return response
+    
+    # Trigger for getting an image from the camera with the position of the robot
+    def trigger_with_position_callback(self, request: TriggerRobotics.Request, response: TriggerRobotics.Response):
+        response.success, response.message = self.sensopart.trigger_with_position(request.pose, request.trigerid)
+        return response
+    
 
     def get_image_callback(self, request: GetImage.Request, response: GetImage.Response):
         if request.trigger:
