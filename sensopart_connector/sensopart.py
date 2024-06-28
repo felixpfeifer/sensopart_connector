@@ -181,7 +181,8 @@ class SensoPart:
             return False, "Camera is not connected."
         try:
             self.log.info(f"Sending request: {message}")
-            self.request_socket.send(message.encode())
+            message = bytes(message, 'ASCII')
+            self.request_socket.send(message)
             return True, ''
         except Exception as e:
             self.log.error(f"Some error: {e}")
@@ -241,13 +242,13 @@ class SensoPart:
             - robot_position: is a list with xyz and roll,pitch and yaw
             - 'measurement_plane': need to be True for the first image and then False
         """
-        request_version = "1"
+        request_version = "2"
         mode = "2"  # Hand-Eye calibration
         order_rotation = "02"  # Roll-Pitch-Yaw
     
         # Convert the measurement_plane bool to a string 0 or 1
         measurement_plane = "1" if measurement_plane else "0"
-
+        
         x = str(round(robot_position[0] * 1000)).zfill(8)[:8]
         y = str(round(robot_position[1] * 1000)).zfill(8)[:8]
         z = str(round(robot_position[2] * 1000)).zfill(8)[:8]
@@ -257,7 +258,7 @@ class SensoPart:
 
         position = x + y + z + rx + ry + rz
 
-        cmd = "CAI" + request_version + mode + "00" + measurement_plane + order_rotation + position
+        cmd = "CAI" + request_version + mode + "000" + measurement_plane + order_rotation + position
         # Check if the length of the command is 59 Bytes
         if len(cmd) != 59:
             self.log.error("Fail check Length: Add calibration image ( " + cmd + " )")
@@ -272,7 +273,7 @@ class SensoPart:
         else:
             self.log.error("Fail: Add calibration image ( " + response + " )")
             # Bit 5-7: Error Codes
-            self.log.error("Error code: " + response[4:7])
+            self.log.error("Error code: " + response[5:7])
             return False
 
     def run_calibration(self) -> bool:
@@ -289,6 +290,7 @@ class SensoPart:
         else:
             self.log.error("Fail: Calibration Robotics multi-image ( " + response + " )")
             return False
+        
 
 if __name__ == '__main__':
     # Setup logging
